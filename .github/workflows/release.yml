@@ -75,7 +75,7 @@ jobs:
       - uses: actions/download-artifact@v4
 
       - name: Display structure of downloaded files
-        run: ls -R artifacts
+        run: ls -R
 
       - name: Release
         uses: ncipollo/release-action@v1
@@ -87,8 +87,8 @@ jobs:
           makeLatest: ${{ github.event.inputs.latest }}
           prerelease: ${{ github.event.inputs.prerelease }}
           allowUpdates: true
-          artifacts: >
-            farm-win-x64/qq-farm-bot-win-x64.exe,
-            farm-linux-x64/qq-farm-bot-linux-x64,
-            farm-mac-x64/qq-farm-bot-macos-x64,
+          artifacts: |
+            farm-win-x64/qq-farm-bot-win-x64.exe
+            farm-linux-x64/qq-farm-bot-linux-x64
+            farm-mac-x64/qq-farm-bot-macos-x64
             farm-mac-arm64/qq-farm-bot-macos-arm64
