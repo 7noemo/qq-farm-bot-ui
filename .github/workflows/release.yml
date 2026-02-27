@@ -83,7 +83,7 @@ jobs:
           name: ${{ github.event.inputs.version }}
           tag: ${{ github.event.inputs.version }}
           body: ${{ github.event.inputs.version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.TOKEN }}
           makeLatest: ${{ github.event.inputs.latest }}
           prerelease: ${{ github.event.inputs.prerelease }}
           allowUpdates: true
