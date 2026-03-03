@@ -2,7 +2,7 @@ name: Sync Fork and Release Docker Image
 
 on:
   schedule:
-    # 每6小时检查一次 (分钟 小时 日 月 星期)
+    # 6每小时检查一次 (分钟 小时 日 月 星期)
     - cron: '0 */6 * * *'
   workflow_dispatch: # 允许手动触发
 
@@ -92,12 +92,14 @@ jobs:
 
   create-tag-and-trigger-workflows:
     needs: sync-and-check-update
+    # 核心修改：如果没有更新或不需要发布，直接跳过此任务（即退出流程）
     if: needs.sync-and-check-update.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.TOKEN }}
           fetch-depth: 0 # 获取所有标签和提交历史
 
       - name: Create Git tag
