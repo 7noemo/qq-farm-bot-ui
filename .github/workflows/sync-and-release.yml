@@ -109,14 +109,7 @@ jobs:
           token: ${{ secrets.TOKEN }}
           fetch-depth: 0 # 获取所有标签和提交历史
 
-      - name: Create Git tag
-        run: |
-          NEW_VERSION="${{ needs.sync-and-check-update.outputs.new_version }}"
-          echo "Creating git tag: $NEW_VERSION"
-          git tag "$NEW_VERSION"
-          git push origin "$NEW_VERSION"
-
-      - name: Trigger Docker Build Workflow
+      - name: Trigger Docker Build Workflow (Before Tagging)
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.TOKEN }}" \
@@ -124,7 +117,18 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/docker-image.yml/dispatches \
             -d '{"ref":"main", "inputs":{"version_tag":"${{ needs.sync-and-check-update.outputs.new_version }}"}}'
 
-      - name: Trigger Release Workflow
+      - name: Create Git tag
+        run: |
+          NEW_VERSION="${{ needs.sync-and-check-update.outputs.new_version }}"
+          echo "Creating git tag: $NEW_VERSION"
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+      # 延迟一下，确保标签已完全推送，给release.yml的push事件一个反应时间
+      - name: Wait for tag to propagate
+        run: sleep 10
+
+      - name: Trigger Release Workflow (After Tagging, on main branch)
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.TOKEN }}" \
