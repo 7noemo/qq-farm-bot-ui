@@ -2,7 +2,7 @@ name: Sync Fork and Release Docker Image
 
 on:
   schedule:
-    # 6每小时检查一次 (分钟 小时 日 月 星期)
+    # 每6小时检查一次 (分钟 小时 日 月 星期)
     - cron: '0 */6 * * *'
   workflow_dispatch: # 允许手动触发
 
@@ -59,18 +59,25 @@ jobs:
         git checkout main
         
         if [ -f Update.log ]; then
-            # 读取第一行
-            FIRST_LINE=$(head -n 1 Update.log)
-            echo "Update.log first line: $FIRST_LINE"
+            # 读取整个 Update.log 文件内容
+            LOG_CONTENT=$(cat Update.log)
+            echo "Content of Update.log:"
+            echo "$LOG_CONTENT"
+            echo "---"
             
-            # 尝试从第一行中提取版本号 (例如 v2.0.4)
-            VERSION=$(echo "$FIRST_LINE" | grep -oP 'v\d+\.\d+\.\d+' | head -1)
+            # 使用正则表达式查找 "后端：" 后面的版本号
+            # 匹配模式: 后端：(v followed by digits.digits.digits or similar)
+            VERSION=$(echo "$LOG_CONTENT" | grep -oP '后端：\s*v?\d+\.\d+\.\d+' | head -1 | sed 's/后端：\s*//')
             
             if [ -n "$VERSION" ]; then
-                echo "Successfully extracted version: $VERSION"
+                # 如果提取到的版本号不以 'v' 开头，则添加 'v' 前缀使其标准化
+                if [[ ! "$VERSION" =~ ^v ]]; then
+                    VERSION="v$VERSION"
+                fi
+                echo "Successfully extracted and normalized version: $VERSION"
                 echo "version=$VERSION" >> $GITHUB_OUTPUT
             else
-                echo "Warning: No version pattern (e.g., v1.2.3) found in Update.log first line."
+                echo "Warning: Pattern '后端：vX.Y.Z' not found in Update.log."
                 echo "version=" >> $GITHUB_OUTPUT
             fi
         else
