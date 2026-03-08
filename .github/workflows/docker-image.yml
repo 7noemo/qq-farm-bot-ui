@@ -54,3 +54,21 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64,linux/arm64,linux/arm/v7
+
+    - name: Trigger Release Workflow after Docker Build
+      if: success()
+      run: |
+        VERSION_TAG="${{ inputs.version_tag }}"
+        
+        if [ -z "$VERSION_TAG" ]; then
+          echo "No version tag provided, skipping release workflow trigger."
+          exit 0
+        fi
+        
+        echo "Docker image built successfully. Triggering release workflow for tag: $VERSION_TAG"
+        
+        curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/${{ github.repository_owner }}/${{ github.event.repository.name }}/actions/workflows/release.yml/dispatches \
+          -d "{\"ref\":\"main\", \"inputs\":{\"version_tag\":\"${VERSION_TAG}\"}}"
