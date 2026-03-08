@@ -48,9 +48,23 @@ jobs:
       if: steps.check_diff.outputs.has_changes == 'true'
       run: |
         echo "Syncing local 'main' branch with upstream..."
-        git merge upstream/main --no-edit
+        git checkout main
+        git fetch upstream
+        
+        # 使用 theirs 策略合并，保留上游的更改，丢弃本地的更改
+        # 这会解决冲突，并以上游仓库的版本为准
+        git merge -s recursive -X theirs upstream/main
+        
+        # 检查合并后是否有未解决的冲突
+        if git ls-files -u | grep -q .; then
+            echo "There are still unmerged paths after resolution attempt. Please investigate."
+            git status
+            exit 1
+        fi
+        
+        # 推送到你的远程仓库
         git push origin main
-        echo "Fork synced with upstream."
+        echo "Fork synced with upstream, keeping upstream changes."
 
     - name: Extract version from Update.log
       id: extract_version
