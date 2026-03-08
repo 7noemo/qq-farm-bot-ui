@@ -2,8 +2,8 @@ name: Sync Fork and Release Docker Image
 
 on:
   schedule:
-    # 每6小时检查一次 (分钟 小时 日 月 星期)
-    - cron: '0 */6 * * *'
+    # 每1小时检查一次 (分钟 小时 日 月 星期)
+    - cron: '0 */1 * * *'
   workflow_dispatch: # 允许手动触发
 
 jobs:
