@@ -1,6 +1,9 @@
 name: Build and Push Docker Image
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version_tag:
@@ -20,6 +23,27 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Determine version tag
+      id: get_tag
+      run: |
+        INPUT_TAG="${{ github.event.inputs.version_tag }}"
+        REF_NAME="${{ github.ref_name }}"
+        REF="${{ github.ref }}"
+
+        if [ -n "$INPUT_TAG" ]; then
+          TAG="$INPUT_TAG"
+        elif [[ "$REF" == refs/tags/v* ]]; then
+          TAG="$REF_NAME"
+        else
+          TAG="latest"
+        fi
+
+        if [[ "$TAG" != latest ]] && [[ ! "$TAG" =~ ^v[0-9] ]]; then
+          echo "Warning: Tag '$TAG' does not follow 'vX.Y.Z' format. Using as-is."
+        fi
+
+        echo "version_tag=$TAG" >> $GITHUB_OUTPUT
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
@@ -31,19 +55,16 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Extract metadata (tags, labels) for Docker
+    - name: Prepare Docker metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
         images: ar1995/qq-farm-bot-ui
         tags: |
-          type=raw,value=latest
-          ${{ inputs.version_tag }}
-        flavor: |
-          latest=true
+          type=raw,value=${{ steps.get_tag.outputs.version_tag }}
+          type=raw,value=latest,enable=${{ steps.get_tag.outputs.version_tag == 'latest' }}
 
     - name: Build and push Docker image
-      id: build-and-push
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -55,20 +76,11 @@ jobs:
         cache-to: type=gha,mode=max
         platforms: linux/amd64,linux/arm64,linux/arm/v7
 
-    - name: Trigger Release Workflow after Docker Build
-      if: success()
+    - name: Trigger Release Workflow (only for valid version tags)
+      if: startsWith(steps.get_tag.outputs.version_tag, 'v')
       run: |
-        VERSION_TAG="${{ inputs.version_tag }}"
-        
-        if [ -z "$VERSION_TAG" ]; then
-          echo "No version tag provided, skipping release workflow trigger."
-          exit 0
-        fi
-        
-        echo "Docker image built successfully. Triggering release workflow for tag: $VERSION_TAG"
-        
         curl -X POST \
           -H "Authorization: Bearer ${{ secrets.TOKEN }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/${{ github.repository_owner }}/${{ github.event.repository.name }}/actions/workflows/release.yml/dispatches \
-          -d "{\"ref\":\"main\", \"inputs\":{\"version_tag\":\"${VERSION_TAG}\"}}"
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches \
+          -d "{\"ref\":\"main\", \"inputs\":{\"version_tag\":\"${{ steps.get_tag.outputs.version_tag }}\"}}"
