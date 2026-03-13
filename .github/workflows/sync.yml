@@ -1,0 +1,115 @@
+name: Sync Upstream and Trigger Docker Build
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # 每小时一次
+  workflow_dispatch:     # 允许手动触发
+
+jobs:
+  sync-and-extract:
+    runs-on: ubuntu-latest
+    outputs:
+      extracted_tag: ${{ steps.extract.outputs.tag }}
+      should_trigger: ${{ steps.check.outputs.should_trigger }}
+    steps:
+      - name: Checkout your fork (main branch)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.TOKEN }}
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/Penty-d/qq-farm-bot-ui.git || echo "Remote already exists"
+          git fetch upstream main
+
+      - name: Merge upstream changes (Preserve local files)
+        id: check
+        run: |
+          # 配置用户信息
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 尝试合并 upstream/main 到当前 main
+          # --no-edit 表示使用默认合并信息，不打开编辑器
+          # 如果有冲突，这一步会失败并退出码非0
+          if git merge upstream/main --no-edit; then
+            echo "Merge successful! Local files preserved, upstream changes added."
+            
+            # 检查是否真的发生了合并（还是说本来就是最新的）
+            # 如果 HEAD 变了，说明有更新
+            LOCAL=$(git rev-parse HEAD)
+            ORIG_HEAD=$(git rev-parse ORIG_HEAD 2>/dev/null || echo "")
+            
+            if [ "$LOCAL" != "$ORIG_HEAD" ] || [ -n "$(git log -1 --pretty=%B | grep 'Merge')" ]; then
+               echo "Changes detected after merge."
+               echo "should_trigger=true" >> $GITHUB_OUTPUT
+               
+               # 推送合并后的结果
+               # 使用 http.extraHeader 方式确保权限足够
+               git config --global http.extraHeader "Authorization: Bearer ${{ secrets.TOKEN }}"
+               git remote set-url origin https://github.com/7noemo/qq-farm-bot-ui.git
+               git push origin main
+               echo "✅ Pushed merged changes to origin."
+            else
+               echo "No new commits to merge (already up to date)."
+               echo "should_trigger=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "❌ Merge conflict detected!"
+            echo "Automatic merge failed because some files conflict between your local changes and upstream."
+            echo "Please resolve conflicts manually or rebase."
+            echo "should_trigger=false" >> $GITHUB_OUTPUT
+            exit 1 # 停止后续步骤，避免提取错误的版本
+          fi
+
+      - name: Extract backend version from Update.log
+        id: extract
+        if: steps.check.outputs.should_trigger == 'true'
+        run: |
+          if [ ! -f Update.log ]; then
+            echo "ERROR: Update.log not found!"
+            exit 1
+          fi
+          FIRST_LINE=$(head -n 1 Update.log)
+          echo "First line: $FIRST_LINE"
+          
+          TAG=$(echo "$FIRST_LINE" | grep -o '后端：v[0-9]\+\.[0-9]\+\.[0-9]\+' | sed 's/后端：//')
+          
+          if [ -z "$TAG" ]; then
+            TAG=$(echo "$FIRST_LINE" | grep -o '后端[^v]*v[0-9]\+\.[0-9]\+\.[0-9]\+' | grep -o 'v[0-9].*$')
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "WARNING: Could not extract version, triggering anyway but version empty?"
+            # 这里可以选择 exit 1 或者继续，视你的需求而定。
+            # 为了稳健，如果没找到版本号，我们可能不想触发构建，或者触发一个不带版本的构建。
+            # 暂时设为空，下游判断
+            echo "tag=unknown" >> $GITHUB_OUTPUT
+          else
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+          fi
+
+  trigger-docker:
+    needs: sync-and-extract
+    if: needs.sync-and-extract.outputs.should_trigger == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch docker-image.yml
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.TOKEN }}
+          script: |
+            const version = '${{ needs.sync-and-extract.outputs.extracted_tag }}';
+            console.log(`Triggering build for version: ${version}`);
+            
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'docker-image.yml',
+              ref: 'main',
+              inputs: {
+                version: version
+              }
+            });
