@@ -2,8 +2,8 @@ name: Sync Upstream and Trigger Docker Build
 
 on:
   schedule:
-    - cron: '0 * * * *'  # 每小时一次
-  workflow_dispatch:     # 允许手动触发
+    - cron: '0 * * * *'  # 每小时一次 (UTC 时间)
+  workflow_dispatch:     # 允许手动触发测试
 
 jobs:
   sync-and-extract:
@@ -32,22 +32,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # 尝试合并 upstream/main 到当前 main
-          # --no-edit 表示使用默认合并信息，不打开编辑器
-          # 如果有冲突，这一步会失败并退出码非0
+          # --no-edit 使用默认合并信息
           if git merge upstream/main --no-edit; then
-            echo "Merge successful! Local files preserved, upstream changes added."
+            echo "✅ Merge successful! Local files preserved."
             
-            # 检查是否真的发生了合并（还是说本来就是最新的）
+            # 检查是否真的发生了新的合并
             # 如果 HEAD 变了，说明有更新
             LOCAL=$(git rev-parse HEAD)
             ORIG_HEAD=$(git rev-parse ORIG_HEAD 2>/dev/null || echo "")
             
-            if [ "$LOCAL" != "$ORIG_HEAD" ] || [ -n "$(git log -1 --pretty=%B | grep 'Merge')" ]; then
+            # 简单的判断：如果 merge 成功且没有提示 "Already up to date" (git merge 成功返回 0，但如果没有变化通常不会创建新 commit)
+            # 更稳妥的方式是检查 git log 是否有新的 merge commit
+            LAST_MSG=$(git log -1 --pretty=%B)
+            
+            if [[ "$LAST_MSG" == *"Merge"* ]]; then
                echo "Changes detected after merge."
                echo "should_trigger=true" >> $GITHUB_OUTPUT
                
                # 推送合并后的结果
-               # 使用 http.extraHeader 方式确保权限足够
                git config --global http.extraHeader "Authorization: Bearer ${{ secrets.TOKEN }}"
                git remote set-url origin https://github.com/7noemo/qq-farm-bot-ui.git
                git push origin main
@@ -58,21 +60,29 @@ jobs:
             fi
           else
             echo "❌ Merge conflict detected!"
-            echo "Automatic merge failed because some files conflict between your local changes and upstream."
-            echo "Please resolve conflicts manually or rebase."
+            echo "Automatic merge failed. Please resolve conflicts manually."
             echo "should_trigger=false" >> $GITHUB_OUTPUT
-            exit 1 # 停止后续步骤，避免提取错误的版本
+            exit 1
           fi
 
       - name: Extract backend version from Update.log
         id: extract
         if: steps.check.outputs.should_trigger == 'true'
         run: |
-          if [ ! -f Update.log ]; then
-            echo "ERROR: Update.log not found!"
-            exit 1
+          # 注意：Update.log 可能在根目录，也可能在 core 目录，根据实际项目结构调整
+          # 假设在根目录，如果报错找不到文件，请改为 ./core/Update.log
+          LOG_FILE="Update.log"
+          if [ ! -f "$LOG_FILE" ]; then
+             # 尝试在 core 目录下找
+             if [ -f "./core/Update.log" ]; then
+                LOG_FILE="./core/Update.log"
+             else
+                echo "ERROR: Update.log not found in root or core/"
+                exit 1
+             fi
           fi
-          FIRST_LINE=$(head -n 1 Update.log)
+          
+          FIRST_LINE=$(head -n 1 "$LOG_FILE")
           echo "First line: $FIRST_LINE"
           
           TAG=$(echo "$FIRST_LINE" | grep -o '后端：v[0-9]\+\.[0-9]\+\.[0-9]\+' | sed 's/后端：//')
@@ -82,34 +92,17 @@ jobs:
           fi
 
           if [ -z "$TAG" ]; then
-            echo "WARNING: Could not extract version, triggering anyway but version empty?"
-            # 这里可以选择 exit 1 或者继续，视你的需求而定。
-            # 为了稳健，如果没找到版本号，我们可能不想触发构建，或者触发一个不带版本的构建。
-            # 暂时设为空，下游判断
-            echo "tag=unknown" >> $GITHUB_OUTPUT
+            echo "WARNING: Could not extract version clearly, using 'latest-only' mode."
+            echo "tag=" >> $GITHUB_OUTPUT
           else
+            echo "Extracted version: $TAG"
             echo "tag=$TAG" >> $GITHUB_OUTPUT
           fi
 
   trigger-docker:
     needs: sync-and-extract
     if: needs.sync-and-extract.outputs.should_trigger == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch docker-image.yml
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.TOKEN }}
-          script: |
-            const version = '${{ needs.sync-and-extract.outputs.extracted_tag }}';
-            console.log(`Triggering build for version: ${version}`);
-            
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'docker-image.yml',
-              ref: 'main',
-              inputs: {
-                version: version
-              }
-            });
+    uses: ./.github/workflows/docker-image.yml
+    with:
+      version: ${{ needs.sync-and-extract.outputs.extracted_tag }}
+    secrets: inherit
