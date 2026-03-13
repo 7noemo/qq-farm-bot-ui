@@ -39,25 +39,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Prepare tags
+      - name: Extract metadata (tags)
         id: meta
-        run: |
-          VERSION_INPUT="${{ inputs.version }}"
-          REGISTRY="docker.io"
-          REPO_NAME="ar1995/qq-farm-bot-ui"
-          
-          # 基础标签：latest
-          TAGS="${REGISTRY}/${REPO_NAME}:latest"
-          
-          # 如果有版本号，添加版本标签
-          if [ -n "$VERSION_INPUT" ]; then
-            TAGS="${TAGS},${REGISTRY}/${REPO_NAME}:${VERSION_INPUT}"
-            echo "✅ Building and pushing tags: latest, ${VERSION_INPUT}"
-          else
-            echo "ℹ️ No version provided, building and pushing 'latest' tag only."
-          fi
-          
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/ar1995/qq-farm-bot-ui
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ inputs.version }},enable={{ inputs.version != '' && inputs.version != null }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
