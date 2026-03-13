@@ -62,9 +62,9 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          # 【关键修改】构建上下文设置为 ./core
-          context: ./core
-          # 【关键修改】Dockerfile 路径设置为 ./core/Dockerfile
+          # 修改 context 为项目根目录 "."
+          context: .
+          # Dockerfile 仍在 core 目录下
           file: ./core/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
