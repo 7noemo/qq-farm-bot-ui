@@ -37,12 +37,6 @@ jobs:
             echo "✅ Merge successful! Local files preserved."
             
             # 检查是否真的发生了新的合并
-            # 如果 HEAD 变了，说明有更新
-            LOCAL=$(git rev-parse HEAD)
-            ORIG_HEAD=$(git rev-parse ORIG_HEAD 2>/dev/null || echo "")
-            
-            # 简单的判断：如果 merge 成功且没有提示 "Already up to date" (git merge 成功返回 0，但如果没有变化通常不会创建新 commit)
-            # 更稳妥的方式是检查 git log 是否有新的 merge commit
             LAST_MSG=$(git log -1 --pretty=%B)
             
             if [[ "$LAST_MSG" == *"Merge"* ]]; then
@@ -50,8 +44,8 @@ jobs:
                echo "should_trigger=true" >> $GITHUB_OUTPUT
                
                # 推送合并后的结果
-               git config --global http.extraHeader "Authorization: Bearer ${{ secrets.TOKEN }}"
-               git remote set-url origin https://github.com/7noemo/qq-farm-bot-ui.git
+               # ✅ 不需要手动设置 Authorization header！
+               # 因为 checkout 时已用 token，Git 已自动认证
                git push origin main
                echo "✅ Pushed merged changes to origin."
             else
