@@ -32,28 +32,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # 尝试合并 upstream/main 到当前 main
-          # --no-edit 使用默认合并信息
           if git merge upstream/main --no-edit; then
             echo "✅ Merge successful! Local files preserved."
             
-            # 检查是否真的发生了新的合并
+            # 检查是否生成了新的 merge commit
             LAST_MSG=$(git log -1 --pretty=%B)
-            
-            if [[ "$LAST_MSG" == *"Merge"* ]]; then
-               echo "Changes detected after merge."
-               echo "should_trigger=true" >> $GITHUB_OUTPUT
-               
-               # 推送合并后的结果
-               # ✅ 不需要手动设置 Authorization header！
-               # 因为 checkout 时已用 token，Git 已自动认证
-               git push origin main
-               echo "✅ Pushed merged changes to origin."
+            if [[ "$LAST_MSG" == *"Merge branch"* || "$LAST_MSG" == *"Merge remote-tracking branch"* ]]; then
+              echo "Changes detected after merge."
+              echo "should_trigger=true" >> $GITHUB_OUTPUT
+              
+              # 使用 token 直接推送（更可靠）
+              git push "https://${{ secrets.TOKEN }}@github.com/7noemo/qq-farm-automation-bot.git" main
+              echo "✅ Pushed merged changes to origin."
             else
-               echo "No new commits to merge (already up to date)."
-               echo "should_trigger=false" >> $GITHUB_OUTPUT
+              echo "No new commits to merge (already up to date)."
+              echo "should_trigger=false" >> $GITHUB_OUTPUT
             fi
           else
-            echo "❌ Merge conflict detected!"
+            echo "❌ Merge conflict or error occurred!"
             echo "Automatic merge failed. Please resolve conflicts manually."
             echo "should_trigger=false" >> $GITHUB_OUTPUT
             exit 1
