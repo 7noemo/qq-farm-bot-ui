@@ -42,7 +42,7 @@ jobs:
               echo "should_trigger=true" >> $GITHUB_OUTPUT
               
               # 使用 token 直接推送（更可靠）
-              git push "https://${{ secrets.TOKEN }}@github.com/7noemo/qq-farm-automation-bot.git" main
+              git push "https://${{ secrets.TOKEN }}@github.com/7noemo/qq-farm-bot-ui.git" main
               echo "✅ Pushed merged changes to origin."
             else
               echo "No new commits to merge (already up to date)."
